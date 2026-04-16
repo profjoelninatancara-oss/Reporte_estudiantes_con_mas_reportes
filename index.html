@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Gestión de Convivencia</title>
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --accent-color: #e74c3c;
+            --bg-color: #f0f2f5;
+            --text-color: #333;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+
+        header {
+            text-align: center;
+            border-bottom: 2px solid #eee;
+            margin-bottom: 25px;
+            padding-bottom: 10px;
+        }
+
+        h1 { margin: 0; color: var(--primary-color); font-size: 1.8rem; }
+        p { color: #666; margin-top: 5px; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        thead {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        th, td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        tr:nth-child(even) { background-color: #fcfcfc; }
+        tr:hover { background-color: #f1f7ff; }
+
+        .badge-warning {
+            display: inline-block;
+            background-color: #ffebee;
+            color: var(--accent-color);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9em;
+            border: 1px solid var(--accent-color);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            font-style: italic;
+            color: #888;
+        }
+
+        /* Estilo para los casos más graves */
+        .critico {
+            background-color: #fff5f5 !important;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Ranking de Atención al Estudiante</h1>
+        <p>Prioridad basada en cantidad de llamados de atención</p>
+    </header>
+
+    <table id="tabla-estudiantes">
+        <thead>
+            <tr>
+                <th>Curso</th>
+                <th>C.I. Estudiante</th>
+                <th>Llamados de Atención</th>
+            </tr>
+        </thead>
+        <tbody id="contenido-tabla">
+            <tr>
+                <td colspan="3" class="loading">Cargando datos desde Google Sheets...</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<script>
+    /**
+     * INSTRUCCIONES:
+     * 1. Ve a tu Google Sheet.
+     * 2. Archivo > Compartir > Publicar en la web.
+     * 3. Elige "Valores separados por comas (.csv)".
+     * 4. Pega el enlace generado aquí abajo:
+     */
+    const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR1BBlw5DtYfNdkbMUfOTHynlWGPLFohmFGbwHAAKnP8q88vWPkk21s7AyR3xpmidSeuTF9mokFkYVi/pub?gid=168130559&single=true&output=csv';
+
+    async function obtenerDatos() {
+        try {
+            const respuesta = await fetch(SHEET_URL, { cache: "no-store" });
+            const csvTexto = await respuesta.text();
+            
+            // 1. Dividir por líneas y filtrar líneas vacías
+            const filas = csvTexto.split(/\r?\n/).filter(linea => linea.trim() !== "");
+            
+            // 2. Procesar datos (empezamos desde i=1 para saltar el encabezado)
+            let estudiantes = [];
+            for (let i = 1; i < filas.length; i++) {
+                // Detectamos si usa coma o punto y coma automáticamente
+                const columnas = filas[i].split(/[,;]/);
+                
+                if (columnas.length >= 3) {
+                    estudiantes.push({
+                        curso: columnas[0].trim(),
+                        ci: columnas[1].trim(),
+                        // Forzamos a que sea un número, si falla ponemos 0
+                        llamadas: parseInt(columnas[2].trim().replace('"', '')) || 0
+                    });
+                }
+            }
+
+            // 3. ORDENAR: Mayor cantidad de llamadas primero
+            estudiantes.sort((a, b) => b.llamadas - a.llamadas);
+
+            // 4. Dibujar la tabla
+            dibujarTabla(estudiantes);
+
+        } catch (error) {
+            console.error("Error detallado:", error);
+            document.getElementById('contenido-tabla').innerHTML = 
+                `<tr><td colspan="3" style="color:red; text-align:center;">
+                Error al conectar con los datos. Verifica el enlace y la consola (F12).
+                </td></tr>`;
+        }
+    }
+
+    function dibujarTabla(datos) {
+        const cuerpo = document.getElementById('contenido-tabla');
+        cuerpo.innerHTML = ''; // Limpiar mensaje de carga
+
+        if (datos.length === 0) {
+            cuerpo.innerHTML = '<tr><td colspan="3">No se encontraron datos en la hoja.</td></tr>';
+            return;
+        }
+
+        datos.forEach(est => {
+            const fila = document.createElement('tr');
+            
+            // Resaltar si tiene más de 0 llamadas
+            const claseCritica = est.llamadas >= 3 ? 'critico' : '';
+            if(claseCritica) fila.className = claseCritica;
+
+            fila.innerHTML = `
+                <td>${est.curso}</td>
+                <td>${est.ci}</td>
+                <td>
+                    <span class="${est.llamadas > 0 ? 'badge-warning' : ''}">
+                        ${est.llamadas}
+                    </span>
+                </td>
+            `;
+            cuerpo.appendChild(fila);
+        });
+    }
+
+    // Ejecutar al cargar la página
+    obtenerDatos();
+</script>
+
+</body>
+</html>
