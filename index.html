@@ -3,17 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Reportes del Kardex Digital 2026</title>
+    <title>Estudiantes con mayor cantidad de reportes - Estadísticas v2</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
-            --primary-color: #ff0000;
+            --primary-color: #2c3e50;
             --accent-color: #e74c3c;
             --bg-color: #f0f2f5;
             --text-color: #333;
         }
 
         body {
-            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            font-family: 'Segoe UI', sans-serif;
             background-color: var(--bg-color);
             color: var(--text-color);
             margin: 0;
@@ -25,7 +26,7 @@
 
         .container {
             width: 100%;
-            max-width: 900px;
+            max-width: 1000px;
             background: white;
             padding: 30px;
             border-radius: 12px;
@@ -39,51 +40,29 @@
             padding-bottom: 10px;
         }
 
-        h1 { margin: 0; color: var(--primary-color); font-size: 1.8rem; }
-        p { color: #666; margin-top: 5px; }
+        .chart-container {
+            position: relative;
+            margin: auto;
+            height: 500px; /* Aumentado para dar espacio a las etiquetas */
+            width: 100%;
+            margin-bottom: 40px;
+        }
 
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 10px;
+            margin-top: 20px;
         }
 
-        thead {
-            background-color: var(--primary-color);
-            color: white;
-        }
-
-        th, td {
-            padding: 15px;
-            text-align: left;
-            border-bottom: 1px solid #eee;
-        }
-
-        tr:nth-child(even) { background-color: #fcfcfc; }
-        tr:hover { background-color: #f1f7ff; }
-
+        thead { background-color: var(--primary-color); color: white; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
+        
         .badge-warning {
-            display: inline-block;
             background-color: #ffebee;
             color: var(--accent-color);
-            padding: 5px 12px;
-            border-radius: 20px;
+            padding: 4px 10px;
+            border-radius: 12px;
             font-weight: bold;
-            font-size: 0.9em;
-            border: 1px solid var(--accent-color);
-        }
-
-        .loading {
-            text-align: center;
-            padding: 20px;
-            font-style: italic;
-            color: #888;
-        }
-
-        /* Estilo para los casos más graves */
-        .critico {
-            background-color: #fff5f5 !important;
-            font-weight: 600;
         }
     </style>
 </head>
@@ -91,105 +70,133 @@
 
 <div class="container">
     <header>
-        <h1>Lista de estudiantes con mayor cantidad de reportes</h1>
-        <p>Unidad Educativa San Lorenzo</p>
+        <h1>Reporte del Kardex digital - Unidad Educativa San Lorenzo</h1>
+        <p>Top 10 Estudiantes con más llamadas de atención</p>
     </header>
+
+    <div class="chart-container">
+        <canvas id="graficoBarras"></canvas>
+    </div>
 
     <table id="tabla-estudiantes">
         <thead>
             <tr>
                 <th>Curso</th>
                 <th>C.I. Estudiante</th>
-                <th>Llamadas de Atención</th>
+                <th>Llamados</th>
             </tr>
         </thead>
         <tbody id="contenido-tabla">
-            <tr>
-                <td colspan="3" class="loading">Cargando datos desde Google Sheets...</td>
-            </tr>
+            <tr><td colspan="3" style="text-align:center">Cargando datos...</td></tr>
         </tbody>
     </table>
 </div>
 
 <script>
-    /**
-     * INSTRUCCIONES:
-     * 1. Ve a tu Google Sheet.
-     * 2. Archivo > Compartir > Publicar en la web.
-     * 3. Elige "Valores separados por comas (.csv)".
-     * 4. Pega el enlace generado aquí abajo:
-     */
     const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR1BBlw5DtYfNdkbMUfOTHynlWGPLFohmFGbwHAAKnP8q88vWPkk21s7AyR3xpmidSeuTF9mokFkYVi/pub?gid=168130559&single=true&output=csv';
+
+    let miGrafico;
 
     async function obtenerDatos() {
         try {
             const respuesta = await fetch(SHEET_URL, { cache: "no-store" });
             const csvTexto = await respuesta.text();
-            
-            // 1. Dividir por líneas y filtrar líneas vacías
             const filas = csvTexto.split(/\r?\n/).filter(linea => linea.trim() !== "");
             
-            // 2. Procesar datos (empezamos desde i=1 para saltar el encabezado)
             let estudiantes = [];
             for (let i = 1; i < filas.length; i++) {
-                // Detectamos si usa coma o punto y coma automáticamente
                 const columnas = filas[i].split(/[,;]/);
-                
                 if (columnas.length >= 3) {
                     estudiantes.push({
                         curso: columnas[0].trim(),
                         ci: columnas[1].trim(),
-                        // Forzamos a que sea un número, si falla ponemos 0
-                        llamadas: parseInt(columnas[2].trim().replace('"', '')) || 0
+                        llamadas: parseInt(columnas[2].trim()) || 0
                     });
                 }
             }
 
-            // 3. ORDENAR: Mayor cantidad de llamadas primero
             estudiantes.sort((a, b) => b.llamadas - a.llamadas);
-
-            // 4. Dibujar la tabla
+            
+            // Tomamos el top 10
+            const topEstudiantes = estudiantes.slice(0, 10);
+            
             dibujarTabla(estudiantes);
+            generarGrafico(topEstudiantes);
 
         } catch (error) {
-            console.error("Error detallado:", error);
-            document.getElementById('contenido-tabla').innerHTML = 
-                `<tr><td colspan="3" style="color:red; text-align:center;">
-                Error al conectar con los datos. Verifica el enlace y la consola (F12).
-                </td></tr>`;
+            console.error("Error:", error);
         }
+    }
+
+    function definirColor(valor) {
+        if (valor >= 5) return '#e74c3c'; // Rojo
+        if (valor >= 3) return '#f39c12'; // Amarillo/Naranja
+        return '#2ecc71'; // Verde
+    }
+
+    function generarGrafico(datos) {
+        const ctx = document.getElementById('graficoBarras').getContext('2d');
+        
+        // Formateamos la etiqueta para que incluya CI y Curso
+        const etiquetas = datos.map(e => `${e.ci} (${e.curso})`);
+        const valores = datos.map(e => e.llamadas);
+        const colores = datos.map(e => definirColor(e.llamadas));
+
+        if (miGrafico) miGrafico.destroy();
+
+        miGrafico = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: etiquetas,
+                datasets: [{
+                    label: 'Llamados de Atención',
+                    data: valores,
+                    backgroundColor: colores,
+                    borderRadius: 8,
+                    barThickness: 30
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    x: { 
+                        beginAtZero: true,
+                        ticks: { stepSize: 1 }
+                    },
+                    y: { 
+                        ticks: {
+                            crossAlign: 'far', // Alinea el texto a la derecha (hacia la barra)
+                            font: {
+                                size: 13,
+                                weight: 'bold'
+                            }
+                        },
+                        grid: { display: false }
+                    }
+                }
+            }
+        });
     }
 
     function dibujarTabla(datos) {
         const cuerpo = document.getElementById('contenido-tabla');
-        cuerpo.innerHTML = ''; // Limpiar mensaje de carga
-
-        if (datos.length === 0) {
-            cuerpo.innerHTML = '<tr><td colspan="3">No se encontraron datos en la hoja.</td></tr>';
-            return;
-        }
-
+        cuerpo.innerHTML = '';
         datos.forEach(est => {
             const fila = document.createElement('tr');
-            
-            // Resaltar si tiene más de 0 llamadas
-            const claseCritica = est.llamadas >= 3 ? 'critico' : '';
-            if(claseCritica) fila.className = claseCritica;
-
             fila.innerHTML = `
                 <td>${est.curso}</td>
                 <td>${est.ci}</td>
-                <td>
-                    <span class="${est.llamadas > 0 ? 'badge-warning' : ''}">
-                        ${est.llamadas}
-                    </span>
-                </td>
+                <td><span class="${est.llamadas > 0 ? 'badge-warning' : ''}">${est.llamadas}</span></td>
             `;
             cuerpo.appendChild(fila);
         });
     }
 
-    // Ejecutar al cargar la página
     obtenerDatos();
 </script>
 
